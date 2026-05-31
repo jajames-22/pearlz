@@ -26,9 +26,13 @@ foreach ($products as $p) {
         </div>
         <div class="px-6 py-3 overflow-y-auto flex-1 bg-gray-50/30" id="productList">
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                <?php foreach($allProducts as $p): ?>
+                <?php foreach($allProducts as $p): 
+                    $skus = array_map(function($v) { return strtolower($v['variant_sku']); }, $p['variants']);
+                    $searchStr = strtolower(htmlspecialchars($p['name'])) . ' ' . implode(' ', $skus);
+                    $firstSku = !empty($p['variants']) ? htmlspecialchars($p['variants'][0]['variant_sku']) : 'N/A';
+                ?>
                     <div class="product-card bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-shadow hover:border-pink-200 active:scale-95 transition-transform" 
-                         data-name="<?php echo strtolower(htmlspecialchars($p['name'])); ?>"
+                         data-search="<?php echo htmlspecialchars($searchStr); ?>"
                          onclick='openVariantModal(<?php echo json_encode($p); ?>)'>
                         <div class="h-40 w-full relative bg-gray-50 flex-shrink-0">
                             <?php if (!empty($p['thumbnail'])): ?>
@@ -41,11 +45,18 @@ foreach ($products as $p) {
                         </div>
                         <div class="p-4 flex flex-col flex-grow">
                             <h3 class="font-bold text-gray-900 text-sm mb-1 leading-tight"><?php echo htmlspecialchars($p['name']); ?></h3>
+                            <div class="text-[10px] text-gray-500 font-mono mb-2">SKU: <?php echo $firstSku; ?></div>
                             <div class="mt-auto font-bold text-pink-600 text-sm">₱<?php echo number_format($p['base_price'], 2); ?></div>
                         </div>
                     </div>
                 <?php endforeach; ?>
             </div>
+        </div>
+        <!-- Shortcuts Guide -->
+        <div class="p-3 bg-white border-t border-gray-100 flex justify-center space-x-6 text-xs text-gray-500 font-medium no-print flex-shrink-0">
+            <div class="flex items-center space-x-1.5"><span class="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-gray-700 font-mono text-[10px] font-bold">F2</span><span>Search</span></div>
+            <div class="flex items-center space-x-1.5"><span class="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-gray-700 font-mono text-[10px] font-bold">F4</span><span>Change Qty</span></div>
+            <div class="flex items-center space-x-1.5"><span class="bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 text-gray-700 font-mono text-[10px] font-bold">F9</span><span>Enter Cash</span></div>
         </div>
     </div>
 
@@ -140,6 +151,23 @@ foreach ($products as $p) {
     </div>
 </div>
 
+<!-- Quantity Modal -->
+<div id="qtyModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-white p-8 rounded-[2rem] shadow-2xl w-full max-w-sm transform scale-95 transition-transform duration-300 mx-4 text-center">
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Change Quantity</h3>
+        <p class="text-sm text-gray-500 mb-6 font-medium" id="qtyModalItemName">Product Name</p>
+        <div class="flex justify-center items-center space-x-6 mb-8">
+            <button type="button" onclick="adjustQtyModal(-1)" class="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-500 font-bold text-xl transition-colors">-</button>
+            <input type="number" id="qtyModalInput" class="w-24 text-center text-4xl font-bold bg-transparent border-b-2 border-gray-200 focus:outline-none focus:border-pink-400 py-1" value="1" min="0">
+            <button type="button" onclick="adjustQtyModal(1)" class="w-12 h-12 flex items-center justify-center rounded-full bg-gray-100 hover:bg-blue-50 text-gray-600 hover:text-blue-500 font-bold text-xl transition-colors">+</button>
+        </div>
+        <div class="flex space-x-3">
+            <button onclick="closeQtyModal()" class="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors">Cancel</button>
+            <button onclick="confirmQtyModal()" class="flex-1 bg-gradient-to-r from-blue-600 to-pink-500 text-white py-3 rounded-xl text-xs font-bold uppercase tracking-widest hover:opacity-90 shadow shadow-pink-500/30 transition-all">Confirm</button>
+        </div>
+    </div>
+</div>
+
 <style>
 @media print {
     body * { visibility: hidden; }
@@ -155,7 +183,8 @@ foreach ($products as $p) {
         <div class="text-center mb-4">
             <h2 class="text-2xl font-bold">PEARLZ</h2>
             <p class="text-xs text-gray-600">Premium Jewelry</p>
-            <p class="text-xs mt-2" id="receiptDate"></p>
+            <p class="text-xs font-bold mt-2 hidden" id="receiptOrderNum"></p>
+            <p class="text-xs mt-1" id="receiptDate"></p>
             <p class="text-xs mt-1 font-bold hidden" id="receiptCustomerName"></p>
         </div>
         <div class="border-t border-dashed border-gray-400 my-3"></div>
@@ -189,6 +218,23 @@ foreach ($products as $p) {
 </div>
 
 <script>
+// Realistic Sound Effects
+const audioPool = {
+    'numpad': new Audio('assets/sounds/numpad.mp3'),
+    'success': new Audio('assets/sounds/click.mp3'),
+    'remove': new Audio('assets/sounds/remove.mp3'),
+    'default': new Audio('assets/sounds/click.mp3')
+};
+
+function playClickSound(type = 'default') {
+    try {
+        const sound = audioPool[type] || audioPool['default'];
+        const clone = sound.cloneNode();
+        clone.volume = 0.6; // comfortable volume
+        clone.play().catch(e => {});
+    } catch (e) {}
+}
+
 let paymentMode = 'cash'; // 'cash' or 'online'
 let cart = [];
 let cashInput = "";
@@ -197,7 +243,7 @@ let currentTotal = 0;
 function filterProducts() {
     const q = document.getElementById('posSearch').value.toLowerCase();
     document.querySelectorAll('.product-card').forEach(card => {
-        if(card.dataset.name.includes(q)) {
+        if(card.dataset.search.includes(q)) {
             card.classList.remove('hidden');
         } else {
             card.classList.add('hidden');
@@ -206,6 +252,7 @@ function filterProducts() {
 }
 
 function openVariantModal(product) {
+    playClickSound('default');
     if(!product.variants || product.variants.length === 0) {
         alert('This product has no variants/stock available yet. Please add variants first in Product Management.');
         return;
@@ -265,6 +312,7 @@ function closeVariantModal() {
 }
 
 function addToCart(product, variant) {
+    playClickSound('success');
     const cartItemId = variant.variant_id;
     const existing = cart.find(i => i.variant_id === cartItemId);
     const price = variant.price_override !== null ? parseFloat(variant.price_override) : parseFloat(product.base_price);
@@ -294,11 +342,13 @@ function addToCart(product, variant) {
 }
 
 function removeFromCart(variant_id) {
+    playClickSound('remove');
     cart = cart.filter(i => i.variant_id !== variant_id);
     updateCartUI();
 }
 
 function changeQty(variant_id, delta) {
+    playClickSound('default');
     const item = cart.find(i => i.variant_id === variant_id);
     if(item) {
         const newQty = item.qty + delta;
@@ -377,6 +427,7 @@ function updateCartUI() {
 }
 
 function numpadInput(key) {
+    playClickSound('numpad');
     if(key === 'C') {
         cashInput = "";
     } else if (key === '⌫') {
@@ -427,66 +478,106 @@ function updateCashDisplay() {
     }
 }
 
-function processCheckout() {
+async function processCheckout() {
     if(cart.length === 0 || document.getElementById('checkoutBtn').disabled) return;
     
+    const checkoutBtn = document.getElementById('checkoutBtn');
+    checkoutBtn.disabled = true;
+    const originalText = checkoutBtn.innerText;
+    checkoutBtn.innerText = 'PROCESSING...';
+
     const cashVal = parseFloat(cashInput) || 0;
     const change = paymentMode === 'cash' ? cashVal - currentTotal : 0;
     const refNo = document.getElementById('refNumberInput').value.trim();
     const customerName = document.getElementById('customerNameInput').value.trim();
     
-    document.getElementById('receiptDate').textContent = new Date().toLocaleString();
-    
-    const customerEl = document.getElementById('receiptCustomerName');
-    if(customerName) {
-        customerEl.textContent = `Customer: ${customerName}`;
-        customerEl.classList.remove('hidden');
-    } else {
-        customerEl.classList.add('hidden');
-    }
-    
-    const itemsContainer = document.getElementById('receiptItems');
-    itemsContainer.innerHTML = '';
-    
-    cart.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'flex justify-between';
-        div.innerHTML = `<span>${item.qty}x ${item.name}</span><span>₱${(item.price * item.qty).toFixed(2)}</span>`;
-        itemsContainer.appendChild(div);
+    try {
+        const response = await fetch('ajax/process_order.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                cart: cart,
+                paymentMode: paymentMode,
+                customerName: customerName,
+                refNo: refNo,
+                totalAmount: currentTotal,
+                amountPaid: paymentMode === 'cash' ? cashVal : currentTotal
+            })
+        });
         
-        if(item.variant) {
-            const vDiv = document.createElement('div');
-            vDiv.className = 'text-[10px] text-gray-500 ml-4 mb-1';
-            vDiv.textContent = `Var: ${item.variant}`;
-            itemsContainer.appendChild(vDiv);
+        const result = await response.json();
+        
+        if(!result.success) {
+            alert('Error processing order: ' + result.error);
+            checkoutBtn.disabled = false;
+            checkoutBtn.innerText = originalText;
+            return;
         }
-    });
-    
-    const subtotal = currentTotal / 1.12;
-    const tax = currentTotal - subtotal;
-    document.getElementById('receiptSubtotal').textContent = `₱${subtotal.toFixed(2)}`;
-    document.getElementById('receiptTax').textContent = `₱${tax.toFixed(2)}`;
-    document.getElementById('receiptTotal').textContent = `₱${currentTotal.toFixed(2)}`;
-    
-    if(paymentMode === 'cash') {
-        document.getElementById('receiptPayMethodLabel').textContent = 'Cash:';
-        document.getElementById('receiptTendered').textContent = `₱${cashVal.toFixed(2)}`;
-        document.getElementById('receiptChange').textContent = `₱${change.toFixed(2)}`;
-    } else {
-        document.getElementById('receiptPayMethodLabel').textContent = 'GCash Ref:';
-        document.getElementById('receiptTendered').textContent = refNo;
-        document.getElementById('receiptChange').textContent = `₱0.00`;
+        
+        // Success - populate receipt
+        document.getElementById('receiptDate').textContent = new Date().toLocaleString();
+        
+        const orderNumEl = document.getElementById('receiptOrderNum');
+        orderNumEl.textContent = `Order #: ${result.order_id}`;
+        orderNumEl.classList.remove('hidden');
+
+        const customerEl = document.getElementById('receiptCustomerName');
+        if(customerName) {
+            customerEl.textContent = `Customer: ${customerName}`;
+            customerEl.classList.remove('hidden');
+        } else {
+            customerEl.classList.add('hidden');
+        }
+        
+        const itemsContainer = document.getElementById('receiptItems');
+        itemsContainer.innerHTML = '';
+        
+        cart.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between';
+            div.innerHTML = `<span>${item.qty}x ${item.name}</span><span>₱${(item.price * item.qty).toFixed(2)}</span>`;
+            itemsContainer.appendChild(div);
+            
+            if(item.variant) {
+                const vDiv = document.createElement('div');
+                vDiv.className = 'text-[10px] text-gray-500 ml-4 mb-1';
+                vDiv.textContent = `Var: ${item.variant}`;
+                itemsContainer.appendChild(vDiv);
+            }
+        });
+        
+        const subtotal = currentTotal / 1.12;
+        const tax = currentTotal - subtotal;
+        document.getElementById('receiptSubtotal').textContent = `₱${subtotal.toFixed(2)}`;
+        document.getElementById('receiptTax').textContent = `₱${tax.toFixed(2)}`;
+        document.getElementById('receiptTotal').textContent = `₱${currentTotal.toFixed(2)}`;
+        
+        if(paymentMode === 'cash') {
+            document.getElementById('receiptPayMethodLabel').textContent = 'Cash:';
+            document.getElementById('receiptTendered').textContent = `₱${cashVal.toFixed(2)}`;
+            document.getElementById('receiptChange').textContent = `₱${change.toFixed(2)}`;
+        } else {
+            document.getElementById('receiptPayMethodLabel').textContent = 'GCash Ref:';
+            document.getElementById('receiptTendered').textContent = refNo;
+            document.getElementById('receiptChange').textContent = `₱0.00`;
+        }
+        
+        const modal = document.getElementById('receiptModal');
+        modal.classList.remove('hidden');
+        setTimeout(() => modal.classList.remove('opacity-0'), 10);
+        
+        clearCart();
+        document.getElementById('refNumberInput').value = '';
+        document.getElementById('customerNameInput').value = '';
+        cashInput = '';
+        updateCashDisplay();
+        
+        checkoutBtn.innerText = originalText;
+    } catch (e) {
+        alert('Network error while processing order.');
+        checkoutBtn.disabled = false;
+        checkoutBtn.innerText = originalText;
     }
-    
-    const modal = document.getElementById('receiptModal');
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.remove('opacity-0'), 10);
-    
-    clearCart();
-    document.getElementById('refNumberInput').value = '';
-    document.getElementById('customerNameInput').value = '';
-    cashInput = '';
-    updateCashDisplay();
 }
 
 function closeReceipt() {
@@ -496,6 +587,7 @@ function closeReceipt() {
 }
 
 function setPaymentMode(mode) {
+    playClickSound('default');
     paymentMode = mode;
     const btnCash = document.getElementById('btnPayCash');
     const btnOnline = document.getElementById('btnPayOnline');
@@ -516,7 +608,106 @@ function setPaymentMode(mode) {
     updateCashDisplay();
 }
 
+let currentQtyItem = null;
+
+function openQtyModal(item) {
+    playClickSound('default');
+    currentQtyItem = item;
+    document.getElementById('qtyModalItemName').textContent = `${item.name} (${item.variant_name})`;
+    document.getElementById('qtyModalInput').value = item.qty;
+    const modal = document.getElementById('qtyModal');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.children[0].classList.remove('scale-95');
+        modal.children[0].classList.add('scale-100');
+        document.getElementById('qtyModalInput').focus();
+        document.getElementById('qtyModalInput').select();
+    }, 10);
+}
+
+function closeQtyModal() {
+    const modal = document.getElementById('qtyModal');
+    modal.classList.add('opacity-0');
+    modal.children[0].classList.remove('scale-100');
+    modal.children[0].classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        document.activeElement.blur();
+    }, 300);
+    currentQtyItem = null;
+}
+
+function adjustQtyModal(delta) {
+    playClickSound('default');
+    const input = document.getElementById('qtyModalInput');
+    let val = parseInt(input.value) || 0;
+    val += delta;
+    if (val < 0) val = 0;
+    input.value = val;
+}
+
+function confirmQtyModal() {
+    const newQty = parseInt(document.getElementById('qtyModalInput').value) || 0;
+    if (currentQtyItem) {
+        if (newQty === 0) {
+            removeFromCart(currentQtyItem.variant_id);
+        } else if (newQty <= currentQtyItem.max_stock) {
+            playClickSound('success');
+            currentQtyItem.qty = newQty;
+            updateCartUI();
+        } else {
+            alert('Cannot exceed available stock!');
+            return;
+        }
+    }
+    closeQtyModal();
+}
+
 document.addEventListener('keydown', (e) => {
+    // Escape: Close modals if open
+    if (e.key === 'Escape') {
+        if (!document.getElementById('variantModal').classList.contains('hidden')) closeVariantModal();
+        if (!document.getElementById('qtyModal').classList.contains('hidden')) closeQtyModal();
+        if (!document.getElementById('receiptModal').classList.contains('hidden')) closeReceipt();
+    }
+
+    if (document.activeElement.id === 'qtyModalInput') {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            confirmQtyModal();
+        }
+        return; // Stop propagating to POS logic
+    }
+
+    // F2: Focus Search
+    if (e.key === 'F2') {
+        e.preventDefault();
+        document.getElementById('posSearch').focus();
+        document.getElementById('posSearch').select();
+        return;
+    }
+    
+    // F4: Edit Quantity of last item
+    if (e.key === 'F4') {
+        e.preventDefault();
+        if (cart.length > 0) {
+            openQtyModal(cart[cart.length - 1]);
+        } else {
+            alert('Cart is empty.');
+        }
+        return;
+    }
+    
+    // F9: Focus Cash / Set Cash Mode
+    if (e.key === 'F9') {
+        e.preventDefault();
+        document.activeElement.blur(); // Ensure search bar or inputs don't capture numpad keys
+        setPaymentMode('cash');
+        numpadInput('C');
+        return;
+    }
+
     if(['posSearch', 'refNumberInput', 'customerNameInput'].includes(document.activeElement.id)) {
         if (e.key === 'Enter' && document.activeElement.id === 'refNumberInput') {
              const checkoutBtn = document.getElementById('checkoutBtn');

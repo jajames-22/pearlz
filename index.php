@@ -220,8 +220,12 @@ $is_logged_in = isset($_SESSION['user_id']);
                 <button type="submit" class="w-full bg-gradient-to-r from-blue-500 to-pink-500 text-white rounded-full py-3 font-semibold uppercase tracking-widest text-sm hover:opacity-90 transition-opacity shadow-lg">Sign In</button>
             </form>
             <div class="mt-6 text-center flex flex-col space-y-3">
-                <a href="#" class="text-sm text-pink-600 hover:text-pink-800 transition-colors">Forgot your password?</a>
-                <a href="register.php" class="text-sm text-gray-600 hover:text-gray-800 transition-colors">Don't have an account? <span class="font-semibold text-pink-600 underline">Create new account</span></a>
+                <a href="#" class="text-sm text-pink-600 hover:text-pink-800 transition-colors mb-2">Forgot your password?</a>
+                <div class="pt-4 border-t border-gray-100">
+                    <p class="text-sm text-gray-500 mb-3">Don't have an account?</p>
+                    <a href="register.php" class="block w-full bg-pink-50 text-pink-600 border border-pink-200 rounded-full py-3 font-semibold uppercase tracking-widest text-sm hover:bg-pink-100 transition-colors shadow-sm">Create New Account</a>
+                    <p class="text-[11px] text-pink-500 mt-2 font-medium italic">Promise! this wont take you a minute.</p>
+                </div>
             </div>
         </div>
     </div>
