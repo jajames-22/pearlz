@@ -47,7 +47,7 @@ $page = $_GET['page'] ?? 'local_order';
             </div>
             <div class="flex items-center space-x-4 md:space-x-6">
                 <span class="text-sm font-medium text-gray-500 uppercase tracking-widest">Welcome, <strong class="text-pink-600"><?php echo htmlspecialchars($_SESSION['first_name']); ?></strong></span>
-                <a href="../logout.php" class="text-xs font-bold uppercase tracking-widest bg-gray-100 text-gray-600 px-4 py-2 rounded-full hover:bg-pink-50 hover:text-pink-600 transition-colors">Logout</a>
+                <a href="#" onclick="openLogoutModal()" class="text-xs font-bold uppercase tracking-widest bg-gray-100 text-gray-600 px-4 py-2 rounded-full hover:bg-pink-50 hover:text-pink-600 transition-colors">Logout</a>
             </div>
         </header>
 
@@ -101,6 +101,50 @@ $page = $_GET['page'] ?? 'local_order';
             document.getElementById('adminSidebar').style.display = 'none';
         }
         <?php endif; ?>
+    </script>
+    <!-- Logout Modal -->
+    <div id="logoutModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-2xl w-full max-w-sm transform scale-95 transition-transform duration-300 mx-4" id="logoutModalContent">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 text-center">Confirm Logout</h2>
+            <p class="text-gray-600 text-center mb-8">Are you sure you want to log out?</p>
+            <div class="flex justify-center space-x-4">
+                <button onclick="closeLogoutModal()" class="px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                <a href="../logout.php" class="px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest bg-red-500 text-white hover:bg-red-600 transition-colors shadow-lg">Log Out</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const logoutModal = document.getElementById('logoutModal');
+        const logoutModalContent = document.getElementById('logoutModalContent');
+
+        function openLogoutModal() {
+            if(logoutModal) {
+                logoutModal.classList.remove('hidden');
+                setTimeout(() => {
+                    logoutModal.classList.remove('opacity-0');
+                    logoutModalContent.classList.remove('scale-95');
+                    logoutModalContent.classList.add('scale-100');
+                }, 10);
+            }
+        }
+
+        function closeLogoutModal() {
+            if(logoutModal) {
+                logoutModal.classList.add('opacity-0');
+                logoutModalContent.classList.remove('scale-100');
+                logoutModalContent.classList.add('scale-95');
+                setTimeout(() => {
+                    logoutModal.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        if(logoutModal) {
+            logoutModal.addEventListener('click', (e) => {
+                if (e.target === logoutModal) closeLogoutModal();
+            });
+        }
     </script>
 </body>
 </html>

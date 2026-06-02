@@ -25,16 +25,23 @@ foreach ($products as $p) {
             <input type="text" id="posSearch" placeholder="Search products..." class="bg-white border border-gray-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-pink-400 transition-all w-64" onkeyup="filterProducts()">
         </div>
         <div class="px-6 py-3 overflow-y-auto flex-1 bg-gray-50/30" id="productList">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
                 <?php foreach($allProducts as $p): 
                     $skus = array_map(function($v) { return strtolower($v['variant_sku']); }, $p['variants']);
                     $searchStr = strtolower(htmlspecialchars($p['name'])) . ' ' . implode(' ', $skus);
                     $firstSku = !empty($p['variants']) ? htmlspecialchars($p['variants'][0]['variant_sku']) : 'N/A';
+                    $totalStock = array_reduce($p['variants'], function($c, $v) { return $c + $v['stock_quantity']; }, 0);
+                    $isOutOfStock = $totalStock <= 0 || empty($p['variants']);
                 ?>
-                    <div class="product-card bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-shadow hover:border-pink-200 active:scale-95 transition-transform" 
+                    <div class="product-card bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col cursor-pointer hover:shadow-md transition-shadow hover:border-pink-200 active:scale-95 transition-transform <?php echo $isOutOfStock ? 'opacity-70 grayscale' : ''; ?>" 
                          data-search="<?php echo htmlspecialchars($searchStr); ?>"
-                         onclick='openVariantModal(<?php echo json_encode($p); ?>)'>
+                         onclick='openVariantModal(<?php echo json_encode($p); ?>, <?php echo $isOutOfStock ? "true" : "false"; ?>)'>
                         <div class="h-40 w-full relative bg-gray-50 flex-shrink-0">
+                            <?php if ($isOutOfStock): ?>
+                                <div class="absolute inset-0 z-10 flex items-center justify-center bg-white/40 backdrop-blur-[1px]">
+                                    <span class="bg-red-500 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg">Out of Stock</span>
+                                </div>
+                            <?php endif; ?>
                             <?php if (!empty($p['thumbnail'])): ?>
                                 <img src="../<?php echo htmlspecialchars($p['thumbnail']); ?>" class="w-full h-full object-cover">
                             <?php else: ?>
@@ -46,7 +53,12 @@ foreach ($products as $p) {
                         <div class="p-4 flex flex-col flex-grow">
                             <h3 class="font-bold text-gray-900 text-sm mb-1 leading-tight"><?php echo htmlspecialchars($p['name']); ?></h3>
                             <div class="text-[10px] text-gray-500 font-mono mb-2">SKU: <?php echo $firstSku; ?></div>
-                            <div class="mt-auto font-bold text-pink-600 text-sm">₱<?php echo number_format($p['base_price'], 2); ?></div>
+                            <div class="mt-auto flex justify-between items-end">
+                                <div class="font-bold text-pink-600 text-sm">₱<?php echo number_format($p['base_price'], 2); ?></div>
+                                <?php if (!$isOutOfStock): ?>
+                                    <div class="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded"><?php echo $totalStock; ?> in stock</div>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -168,6 +180,18 @@ foreach ($products as $p) {
     </div>
 </div>
 
+<!-- Error Modal -->
+<div id="errorModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+    <div class="bg-white p-8 rounded-[2rem] shadow-2xl w-full max-w-sm transform scale-95 transition-transform duration-300 mx-4 text-center">
+        <div class="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Notice</h3>
+        <p class="text-sm text-gray-500 mb-6 font-medium" id="errorModalMsg"></p>
+        <button onclick="closeErrorModal()" class="w-full bg-gray-100 text-gray-700 py-3 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors focus:outline-none">Dismiss</button>
+    </div>
+</div>
+
 <style>
 @media print {
     body * { visibility: hidden; }
@@ -251,10 +275,39 @@ function filterProducts() {
     });
 }
 
-function openVariantModal(product) {
+function showErrorModal(msg) {
+    playClickSound('remove');
+    document.getElementById('errorModalMsg').textContent = msg;
+    const modal = document.getElementById('errorModal');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.children[0].classList.remove('scale-95');
+        modal.children[0].classList.add('scale-100');
+    }, 10);
+}
+
+function closeErrorModal() {
+    const modal = document.getElementById('errorModal');
+    modal.classList.add('opacity-0');
+    modal.children[0].classList.remove('scale-100');
+    modal.children[0].classList.add('scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        if (document.activeElement) document.activeElement.blur();
+    }, 300);
+}
+
+function openVariantModal(product, isOutOfStock = false) {
     playClickSound('default');
+    
+    if (isOutOfStock) {
+        showErrorModal('This product has no stock available. Please add variants/stock first in Product Management.');
+        return;
+    }
+
     if(!product.variants || product.variants.length === 0) {
-        alert('This product has no variants/stock available yet. Please add variants first in Product Management.');
+        showErrorModal('This product has no variants/stock available yet. Please add variants first in Product Management.');
         return;
     }
     
@@ -319,13 +372,13 @@ function addToCart(product, variant) {
     
     if (existing) {
         if(existing.qty >= variant.stock_quantity) {
-            alert('Cannot exceed available stock!');
+            showErrorModal('Cannot exceed available stock!');
             return;
         }
         existing.qty++;
     } else {
         if(variant.stock_quantity <= 0) {
-            alert('Out of stock!');
+            showErrorModal('Out of stock!');
             return;
         }
         cart.push({
@@ -508,7 +561,7 @@ async function processCheckout() {
         const result = await response.json();
         
         if(!result.success) {
-            alert('Error processing order: ' + result.error);
+            showErrorModal('Error processing order: ' + result.error);
             checkoutBtn.disabled = false;
             checkoutBtn.innerText = originalText;
             return;
@@ -574,7 +627,7 @@ async function processCheckout() {
         
         checkoutBtn.innerText = originalText;
     } catch (e) {
-        alert('Network error while processing order.');
+        showErrorModal('Network error while processing order.');
         checkoutBtn.disabled = false;
         checkoutBtn.innerText = originalText;
     }
@@ -657,7 +710,7 @@ function confirmQtyModal() {
             currentQtyItem.qty = newQty;
             updateCartUI();
         } else {
-            alert('Cannot exceed available stock!');
+            showErrorModal('Cannot exceed available stock!');
             return;
         }
     }
@@ -694,7 +747,7 @@ document.addEventListener('keydown', (e) => {
         if (cart.length > 0) {
             openQtyModal(cart[cart.length - 1]);
         } else {
-            alert('Cart is empty.');
+            showErrorModal('Cart is empty.');
         }
         return;
     }

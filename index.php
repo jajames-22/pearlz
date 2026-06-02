@@ -3,10 +3,20 @@
 session_start();
 require_once 'databse/database.php';
 require_once 'models/User.php';
+require_once 'models/Product.php';
 
 $database = new Database();
 $db = $database->getConnection(); 
 $userModel = new User($db);
+$productModel = new Product($db);
+
+$products = $productModel->getAll();
+$categorized_products = [];
+foreach ($products as $p) {
+    $cat = $p['category_name'] ? $p['category_name'] : 'Uncategorized';
+    if (!isset($categorized_products[$cat])) $categorized_products[$cat] = [];
+    $categorized_products[$cat][] = $p;
+}
 
 $login_error = '';
 
@@ -44,6 +54,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action']) && $_POST['a
 }
 
 $is_logged_in = isset($_SESSION['user_id']);
+$cart_count = 0;
+if ($is_logged_in) {
+    $stmt = $db->prepare("SELECT SUM(qty) as total FROM cart WHERE user_id = ?");
+    $stmt->execute([$_SESSION['user_id']]);
+    $result = $stmt->fetch();
+    $cart_count = $result['total'] ?: 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -100,13 +117,13 @@ $is_logged_in = isset($_SESSION['user_id']);
                         <?php if ($_SESSION['role'] === 'admin'): ?>
                             <a href="admin/layout.php" class="block text-left px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-gray-600 hover:bg-pink-50 hover:text-pink-600 transition-colors">Dashboard</a>
                         <?php endif; ?>
-                        <a href="logout.php" class="block text-left px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors">Log Out</a>
+                        <a href="#" onclick="openLogoutModal()" class="block text-left px-5 py-2.5 text-xs font-bold uppercase tracking-widest text-red-500 hover:bg-red-50 transition-colors">Log Out</a>
                     </div>
                 </div>
-                <a href="cart.php" class="hover:text-pink-500 transition-colors">Cart (0)</a>
+                <a href="cart.php" class="hover:text-pink-500 transition-colors">Cart (<?php echo $cart_count; ?>)</a>
             <?php else: ?>
                 <button id="loginBtn" class="hover:text-pink-500 transition-colors uppercase font-semibold focus:outline-none">Login</button>
-                <button onclick="openModal()" class="hover:text-pink-500 transition-colors uppercase font-semibold focus:outline-none">Cart (0)</button>
+                <button onclick="openModal()" class="hover:text-pink-500 transition-colors uppercase font-semibold focus:outline-none">Cart (<?php echo $cart_count; ?>)</button>
             <?php endif; ?>
         </div>
         
@@ -135,56 +152,48 @@ $is_logged_in = isset($_SESSION['user_id']);
             </div>
         </section>
 
-        <section id="featured" class="">
-            <div class="flex justify-between items-end mb-10">
-                <h2 class="text-3xl font-bold text-gray-900 mt-28">Featured Exclusives</h2>
-                <a href="#" class="text-sm font-semibold uppercase tracking-wider text-pink-600 hover:text-pink-800 transition">View All &rarr;</a>
-            </div>
-            
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
-                
-                <div class="group cursor-pointer">
-                    <div class="h-80 bg-white/60 backdrop-blur-sm rounded-3xl mb-4 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm group-hover:shadow-md transition duration-300">
-                        <span class="text-sm uppercase tracking-widest">[Feature Image]</span>
+        <div id="featured">
+            <?php if (empty($categorized_products)): ?>
+                <section class="mt-28 text-center">
+                    <h2 class="text-3xl font-bold text-gray-900 mb-4">No Products Available</h2>
+                    <p class="text-gray-500">Check back later for our new collections!</p>
+                </section>
+            <?php else: ?>
+                <?php $isFirst = true; foreach ($categorized_products as $category => $items): ?>
+                <section class="<?php echo $isFirst ? 'mt-28' : 'mt-16'; ?>">
+                    <div class="flex justify-between items-end mb-10">
+                        <h2 class="text-3xl font-bold text-gray-900 capitalize"><?php echo htmlspecialchars($category); ?></h2>
+                        <a href="#" class="text-sm font-semibold uppercase tracking-wider text-pink-600 hover:text-pink-800 transition">View All &rarr;</a>
                     </div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-bold text-lg text-gray-900 group-hover:text-pink-600 transition">Signature Cuff</h3>
-                            <p class="text-gray-500 text-sm mt-1">Custom Engraving Available</p>
-                        </div>
-                        <p class="font-semibold text-gray-900">₱250.00</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10">
+                        <?php foreach ($items as $item): ?>
+                        <a href="view_product.php?id=<?php echo $item['product_id']; ?>" class="group cursor-pointer block">
+                            <div class="h-80 bg-white/60 backdrop-blur-sm rounded-3xl mb-4 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm group-hover:shadow-md transition duration-300 relative">
+                                <?php if ($item['is_limited_edition']): ?>
+                                    <span class="absolute top-4 left-4 z-10 bg-gradient-to-r from-blue-600 to-pink-500 text-white text-xs px-3 py-1 uppercase tracking-wider rounded-full shadow-lg">Limited</span>
+                                <?php endif; ?>
+                                
+                                <?php if (!empty($item['thumbnail'])): ?>
+                                    <img src="<?php echo htmlspecialchars($item['thumbnail']); ?>" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                                <?php else: ?>
+                                    <span class="text-sm uppercase tracking-widest">[No Image]</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-bold text-lg text-gray-900 group-hover:text-pink-600 transition truncate max-w-[200px]"><?php echo htmlspecialchars($item['name']); ?></h3>
+                                    <p class="text-gray-500 text-sm mt-1"><?php echo $item['allows_custom_text'] ? 'Customizable' : 'Standard Edition'; ?></p>
+                                </div>
+                                <p class="font-semibold text-gray-900 text-pink-600">₱<?php echo number_format($item['base_price'], 2); ?></p>
+                            </div>
+                        </a>
+                        <?php endforeach; ?>
                     </div>
-                </div>
-
-                <div class="group cursor-pointer">
-                    <div class="h-80 bg-white/60 backdrop-blur-sm rounded-3xl mb-4 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm group-hover:shadow-md transition duration-300 relative">
-                        <span class="absolute top-4 left-4 bg-gradient-to-r from-blue-600 to-pink-500 text-white text-xs px-3 py-1 uppercase tracking-wider rounded-full">Limited</span>
-                        <span class="text-sm uppercase tracking-widest">[Feature Image]</span>
-                    </div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-bold text-lg text-gray-900 group-hover:text-pink-600 transition">Rose Gold Timepiece</h3>
-                            <p class="text-gray-500 text-sm mt-1">3 Variants</p>
-                        </div>
-                        <p class="font-semibold text-gray-900">₱1,200.00</p>
-                    </div>
-                </div>
-
-                <div class="group cursor-pointer">
-                    <div class="h-80 bg-white/60 backdrop-blur-sm rounded-3xl mb-4 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm group-hover:shadow-md transition duration-300">
-                        <span class="text-sm uppercase tracking-widest">[Feature Image]</span>
-                    </div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-bold text-lg text-gray-900 group-hover:text-pink-600 transition">Pearl Drop Earrings</h3>
-                            <p class="text-gray-500 text-sm mt-1">Silver / Gold</p>
-                        </div>
-                        <p class="font-semibold text-gray-900">$185.00</p>
-                    </div>
-                </div>
-
-            </div>
-        </section>
+                </section>
+                <?php $isFirst = false; endforeach; ?>
+            <?php endif; ?>
+        </div>
     </main>
 
     <footer class="bg-white/30 backdrop-blur-md border-t border-white/50 mt-24 py-10">
@@ -254,12 +263,12 @@ $is_logged_in = isset($_SESSION['user_id']);
                         <?php if ($_SESSION['role'] === 'admin'): ?>
                             <a href="admin/layout.php" class="text-sm font-semibold uppercase tracking-widest text-gray-600 hover:text-pink-500 transition-colors pl-9">Dashboard</a>
                         <?php endif; ?>
-                        <a href="logout.php" class="text-sm font-semibold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors pl-9">Log Out</a>
+                        <a href="#" onclick="openLogoutModal()" class="text-sm font-semibold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors pl-9">Log Out</a>
                     </div>
-                    <a href="cart.php" class="text-lg font-semibold uppercase tracking-widest hover:text-pink-500 transition-colors pt-2 border-t border-gray-100">Cart (0)</a>
+                    <a href="cart.php" class="text-lg font-semibold uppercase tracking-widest hover:text-pink-500 transition-colors pt-2 border-t border-gray-100">Cart (<?php echo $cart_count; ?>)</a>
                 <?php else: ?>
                     <button id="mobileLoginBtn" class="text-left text-lg font-semibold uppercase tracking-widest hover:text-pink-500 transition-colors focus:outline-none">Login</button>
-                    <button onclick="closeDrawer(); openModal();" class="text-left text-lg font-semibold uppercase tracking-widest hover:text-pink-500 transition-colors focus:outline-none">Cart (0)</button>
+                    <button onclick="closeDrawer(); openModal();" class="text-left text-lg font-semibold uppercase tracking-widest hover:text-pink-500 transition-colors focus:outline-none">Cart (<?php echo $cart_count; ?>)</button>
                 <?php endif; ?>
             </div>
         </div>
@@ -334,6 +343,50 @@ $is_logged_in = isset($_SESSION['user_id']);
             // Re-open modal if there was a login error
             openModal();
         <?php endif; ?>
+    </script>
+    <!-- Logout Modal -->
+    <div id="logoutModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-2xl w-full max-w-sm transform scale-95 transition-transform duration-300 mx-4" id="logoutModalContent">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4 text-center">Confirm Logout</h2>
+            <p class="text-gray-600 text-center mb-8">Are you sure you want to log out?</p>
+            <div class="flex justify-center space-x-4">
+                <button onclick="closeLogoutModal()" class="px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+                <a href="logout.php" class="px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest bg-red-500 text-white hover:bg-red-600 transition-colors shadow-lg">Log Out</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const logoutModal = document.getElementById('logoutModal');
+        const logoutModalContent = document.getElementById('logoutModalContent');
+
+        function openLogoutModal() {
+            if(logoutModal) {
+                logoutModal.classList.remove('hidden');
+                setTimeout(() => {
+                    logoutModal.classList.remove('opacity-0');
+                    logoutModalContent.classList.remove('scale-95');
+                    logoutModalContent.classList.add('scale-100');
+                }, 10);
+            }
+        }
+
+        function closeLogoutModal() {
+            if(logoutModal) {
+                logoutModal.classList.add('opacity-0');
+                logoutModalContent.classList.remove('scale-100');
+                logoutModalContent.classList.add('scale-95');
+                setTimeout(() => {
+                    logoutModal.classList.add('hidden');
+                }, 300);
+            }
+        }
+
+        if(logoutModal) {
+            logoutModal.addEventListener('click', (e) => {
+                if (e.target === logoutModal) closeLogoutModal();
+            });
+        }
     </script>
 </body>
 </html>

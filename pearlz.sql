@@ -77,6 +77,11 @@ CREATE TABLE Orders (
     
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total_amount DECIMAL(10, 2) NOT NULL,
+    delivery_type ENUM('pickup', 'delivery') DEFAULT 'pickup',
+    delivery_address TEXT NULL,
+    preferred_date DATETIME NULL,
+    payment_method ENUM('cash_on_pickup', 'cash_on_delivery', 'online_payment') DEFAULT 'cash_on_pickup',
+    payment_reference VARCHAR(100) NULL,
     status VARCHAR(50) DEFAULT 'Pending', 
     FOREIGN KEY (user_id) REFERENCES Users(user_id) ON DELETE SET NULL
 );
@@ -104,3 +109,17 @@ CREATE TABLE Payments (
     payment_status VARCHAR(50) DEFAULT 'Completed', 
     FOREIGN KEY (order_id) REFERENCES Orders(order_id) ON DELETE CASCADE
 );
+-- 9. Vouchers Table
+CREATE TABLE IF NOT EXISTS Vouchers (
+    voucher_id INT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    discount_type ENUM('percentage', 'fixed') NOT NULL DEFAULT 'percentage',
+    discount_value DECIMAL(10, 2) NOT NULL,
+    min_spend DECIMAL(10, 2) DEFAULT 0.00,
+    is_active BOOLEAN DEFAULT TRUE,
+    max_uses INT NULL,
+    used_count INT DEFAULT 0
+);
+
+INSERT IGNORE INTO Vouchers (code, discount_type, discount_value, min_spend) VALUES ('WELCOME10', 'percentage', 10.00, 0.00);
+INSERT IGNORE INTO Vouchers (code, discount_type, discount_value, min_spend) VALUES ('MINUS50', 'fixed', 50.00, 100.00);
